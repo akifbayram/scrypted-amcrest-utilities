@@ -1,6 +1,8 @@
-# Hikvision utilities
+# Amcrest Utilities
 
-https://github.com/apocaliss92/scrypted-hikvision-utilities - For requests and bugs
+Utilities for Amcrest and Dahua cameras:
+- Set OSD texts dynamically from Scrypted
 
-Utilities for hikvision:
-- set OSD texts dynamically from scrypted
+# Acknowledgments
+
+[https://github.com/apocaliss92/scrypted-hikvision-utilities](https://github.com/apocaliss92/scrypted-hikvision-utilities)

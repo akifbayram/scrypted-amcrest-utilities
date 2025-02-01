@@ -1,9 +1,9 @@
 {
-  "name": "@apocaliss92/scrypted-hikvision-utilities",
-  "description": "Scrypted plugin to enhance hikvision cameras",
+  "name": "@akifbayram/scrypted-amcrest-utilities",
+  "description": "Scrypted plugin to enhance amcrest cameras",
   "repository": {
     "type": "git",
-    "url": "https://github.com/apocaliss92/scrypted-hikvision-utilities"
+    "url": "https://github.com/akifbayram/scrypted-amcrest-utilities"
   },
   "version": "0.0.4",
   "scripts": {
@@ -22,11 +22,12 @@
   "keywords": [
     "scrypted",
     "plugin",
-    "hikvision",
+    "amcrest",
+    "dahua",
     "videoclips"
   ],
   "scrypted": {
-    "name": "Hikvision utilities",
+    "name": "amcrest utilities",
     "type": "API",
     "interfaces": [
       "Settings",
