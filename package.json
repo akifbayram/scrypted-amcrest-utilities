@@ -27,7 +27,7 @@
     "videoclips"
   ],
   "scrypted": {
-    "name": "amcrest utilities",
+    "name": "Amcrest Utilities",
     "type": "API",
     "interfaces": [
       "Settings",
