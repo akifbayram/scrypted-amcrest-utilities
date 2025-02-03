@@ -11,7 +11,7 @@ import { StorageSettings } from "@scrypted/sdk/storage-settings";
 
 export const updateCameraConfigurationRegex = new RegExp("overlay:(.*):update");
 export const AMCREST_DAHUA_UTILITIES_INTERFACE = `AMCREST_DAHUA_UTILITIES`;
-export const deviceFilter = `['${ScryptedInterface.Thermometer}','${ScryptedInterface.HumiditySensor}'].some(elem => interfaces.includes(elem))`;
+export const deviceFilter = `['${ScryptedInterface.Thermometer}','${ScryptedInterface.HumiditySensor}','${ScryptedInterface.Lock}'].some(elem => interfaces.includes(elem))`;
 export const pluginEnabledFilter = `interfaces.includes('${AMCREST_DAHUA_UTILITIES_INTERFACE}')`;
 
 export type SupportedDevice = ScryptedDeviceBase & (Thermometer | HumiditySensor);
@@ -26,6 +26,7 @@ export enum ListenerType {
   Face = "Face",
   Humidity = "Humidity",
   Temperature = "Temperature",
+  Lock = "Lock",
 }
 
 export type ListenersMap = Record<
@@ -86,7 +87,11 @@ export const getOverlaySettings = (props: {
         key: typeKey,
         title: "Overlay type",
         type: "string",
-        choices: [OverlayType.Text, OverlayType.Device, OverlayType.FaceDetection],
+        choices: [
+          OverlayType.Text,
+          OverlayType.Device,
+          OverlayType.FaceDetection,
+        ],
         subgroup: overlayName,
         value: type,
         immediate: true,
@@ -170,6 +175,16 @@ export const listenersIntevalFn = (props: {
           listenInterface = ScryptedInterface.HumiditySensor;
           deviceId = overlay.device;
         }
+        // else if (realDevice.interfaces.includes(ScryptedInterface.Entry)) {
+        //   listenerType = ListenerType.Cover;
+        //   listenInterface = ScryptedInterface.Entry;
+        //   deviceId = overlay.device;
+        // }
+        else if (realDevice.interfaces.includes(ScryptedInterface.Lock)) {
+          listenerType = ListenerType.Lock;
+          listenInterface = ScryptedInterface.Lock;
+          deviceId = overlay.device;
+        }
       } else {
         console.log(`Device ${overlay.device} not found`);
       }
@@ -213,16 +228,20 @@ export const parseOverlayData = (props: {
   parseNumber?: (input: number) => string;
 }) => {
   const { listenerType, data, overlay, parseNumber } = props;
-  const { prefix, text, device } = overlay;
-  const realDevice = device ? sdk.systemManager.getDeviceById<SupportedDevice>(device) : undefined;
+  const { prefix, text } = overlay;
   let textToUpdate = text;
   if (listenerType === ListenerType.Face) {
     const label = (data as ObjectsDetected)?.detections?.find((det) => det.className === "face")?.label;
     textToUpdate = label;
   } else if (listenerType === ListenerType.Temperature) {
-    textToUpdate = `${prefix || ""}${parseNumber ? parseNumber(data) : data} ${realDevice.temperatureUnit}`;
+    const realDevice = overlay.device ? sdk.systemManager.getDeviceById(overlay.device) as any : undefined;
+    textToUpdate = `${prefix || ""}${parseNumber ? parseNumber(data) : data} ${realDevice?.temperatureUnit || ""}`;
   } else if (listenerType === ListenerType.Humidity) {
     textToUpdate = `${prefix || ""}${parseNumber ? parseNumber(data) : data} %`;
+    // } else if (listenerType === ListenerType.Cover) {
+    //   textToUpdate = `${prefix || ""}${data}`;
+  } else if (listenerType === ListenerType.Lock) {
+    textToUpdate = `${prefix || ""}${data}`;
   }
   return textToUpdate;
 };

@@ -5,6 +5,7 @@ import sdk, {
   ScryptedInterface,
   Setting,
   Settings,
+  LockState,
 } from "@scrypted/sdk";
 import {
   SettingsMixinDeviceBase,
@@ -256,6 +257,9 @@ export default class AmcrestDahuaUtilitiesMixin
             textToUpdate = `${prefix || ""}${realDevice.temperature} ${realDevice.temperatureUnit}`;
           } else if (realDevice.interfaces.includes(ScryptedInterface.HumiditySensor)) {
             textToUpdate = `${prefix || ""}${realDevice.humidity} %`;
+          }
+          else if (realDevice.interfaces.includes(ScryptedInterface.Lock)) {
+            textToUpdate = `${prefix || ""}${realDevice.lockState}`;
           }
         }
       } else if (type === OverlayType.FaceDetection) {
