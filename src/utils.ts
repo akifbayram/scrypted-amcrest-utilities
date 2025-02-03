@@ -37,9 +37,9 @@ export type ListenersMap = Record<
 export type OnUpdateOverlayFn = (props: {
   overlayId: string;
   listenerType: ListenerType;
-  listenInterface: ScryptedInterface;
+  listenInterface?: ScryptedInterface;
   data?: any;
-  device: ScryptedDeviceBase;
+  device?: ScryptedDeviceBase;
 }) => Promise<void>;
 
 interface Overlay {
@@ -72,20 +72,13 @@ export const getOverlaySettings = (props: {
   const settings: Setting[] = [];
   for (const overlayId of overlayIds) {
     const overlayName = `Overlay ${overlayId}`;
-    const { deviceKey, typeKey, prefixKey, textKey, updateKey } = getOverlayKeys(overlayId);
+    const { deviceKey, typeKey, prefixKey, textKey } = getOverlayKeys(overlayId);
     const type = storage.getItem(typeKey) ?? OverlayType.Text;
+
     settings.push(
       {
-        key: textKey,
-        title: "Text",
-        type: "string",
-        subgroup: overlayName,
-        value: storage.getItem(textKey),
-        readonly: type !== OverlayType.Text,
-      },
-      {
         key: typeKey,
-        title: "Overlay type",
+        title: "Type",
         type: "string",
         choices: [
           OverlayType.Text,
@@ -97,6 +90,17 @@ export const getOverlaySettings = (props: {
         immediate: true,
       }
     );
+
+    if (type === OverlayType.Text) {
+      settings.push({
+        key: textKey,
+        title: "Text",
+        type: "string",
+        subgroup: overlayName,
+        value: storage.getItem(textKey),
+      });
+    }
+
     const prefixSetting: Setting = {
       key: prefixKey,
       title: 'Prefix',
@@ -125,6 +129,7 @@ export const getOverlaySettings = (props: {
 
   return settings;
 }
+
 export const getOverlay = (props: {
   storage: StorageSettings<any>;
   overlayId: string;
@@ -212,6 +217,13 @@ export const listenersIntevalFn = (props: {
         device: overlay.device,
         listener: newListener,
       };
+    }
+    if (overlayType === OverlayType.Text) {
+      if (currentListener?.listener) {
+        console.log(`Removing listener for text overlay ${overlayId}`);
+        currentListener.listener.removeListener();
+        delete currentListeners[overlayId];
+      }
     }
   }
 };

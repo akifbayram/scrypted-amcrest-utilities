@@ -42,9 +42,9 @@ export default class AmcrestDahuaUtilitiesMixin
 
   storageSettings = new StorageSettings(this, {
     duplicateFromDevice: {
-      title: "Duplicate from device",
+      title: "Duplicate from Device",
       description:
-        "Duplicate OSD information from another device enabled on the plugin",
+        "Duplicate OSD from another device",
       type: "device",
       deviceFilter: pluginEnabledFilter,
       immediate: true,
@@ -123,7 +123,14 @@ export default class AmcrestDahuaUtilitiesMixin
       const overlayId = updateOverlayMatch[1];
       await this.updateOverlayData(overlayId);
     }
-    // When a device selection changes, immediately push the update.
+    else if (/overlay:(.*):type/.test(key)) {
+      this.storage.setItem(key, value);
+      const match = key.match(/overlay:(.*):type/);
+      if (match) {
+        const overlayId = match[1];
+        await this.updateOverlayData(overlayId);
+      }
+    }
     else if (/overlay:(.*):device/.test(key)) {
       this.storage.setItem(key, value);
       const match = key.match(/overlay:(.*):device/);
@@ -204,20 +211,17 @@ export default class AmcrestDahuaUtilitiesMixin
     const deviceToDuplicate = this.plugin.mixinsMap[deviceId];
     if (deviceToDuplicate) {
       try {
-        const duplicateClient = await deviceToDuplicate.getClient();
-        const { json } = await duplicateClient.getOverlay();
-        const client = await this.getClient();
-        await this.getOverlayData();
+        // Remove text key from duplication
         for (const overlayId of deviceToDuplicate.overlayIds) {
-          const { device, type, prefix, text } = getOverlay({
+          const { device, type, prefix } = getOverlay({
             overlayId,
             storage: deviceToDuplicate.storageSettings,
           });
-          const { deviceKey, typeKey, prefixKey, textKey } = getOverlayKeys(overlayId);
+          const { deviceKey, typeKey, prefixKey } = getOverlayKeys(overlayId);
+
           await this.putMixinSetting(deviceKey, device);
           await this.putMixinSetting(typeKey, type);
           await this.putMixinSetting(prefixKey, prefix);
-          await this.putMixinSetting(textKey, text);
         }
       } catch (e) {
         this.console.error("Error in duplicateFromDevice", e);
@@ -225,18 +229,10 @@ export default class AmcrestDahuaUtilitiesMixin
     }
   }
 
-  private updateOverlayDataEvent: OnUpdateOverlayFn = async (props: {
-    overlayId: string;
-    listenerType: ListenerType;
-    listenInterface: ScryptedInterface;
-    data?: any;
-    device: ScryptedDeviceBase;
-  }) => {
+  private updateOverlayDataEvent: OnUpdateOverlayFn = async (props) => {
     const { overlayId, listenerType, data, device } = props;
     this.console.log(
-      `Update received from device ${device.name} for overlay ${overlayId} with data: ${JSON.stringify(
-        data
-      )}`
+      `Update received from device ${device?.name} for overlay ${overlayId}`
     );
     try {
       const overlay = getOverlay({ overlayId, storage: this.storageSettings });
