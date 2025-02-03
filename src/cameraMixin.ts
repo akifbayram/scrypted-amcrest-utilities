@@ -41,10 +41,6 @@ export default class AmcrestDahuaUtilitiesMixin
   listenersMap: ListenersMap = {};
 
   storageSettings = new StorageSettings(this, {
-    getCurrentOverlayConfigurations: {
-      title: "Get current overlay configurations",
-      type: "button",
-    },
     duplicateFromDevice: {
       title: "Duplicate from device",
       description:
@@ -121,9 +117,7 @@ export default class AmcrestDahuaUtilitiesMixin
 
   async putMixinSetting(key: string, value: string) {
     const updateOverlayMatch = updateCameraConfigurationRegex.exec(key);
-    if (key === "getCurrentOverlayConfigurations") {
-      await this.getOverlayData();
-    } else if (key === "duplicateFromDevice") {
+    if (key === "duplicateFromDevice") {
       await this.duplicateFromDevice(value);
     } else if (updateOverlayMatch) {
       const overlayId = updateOverlayMatch[1];
@@ -138,10 +132,17 @@ export default class AmcrestDahuaUtilitiesMixin
         await this.updateOverlayData(overlayId);
       }
     }
-    // When the value prefix is changed, immediately push the update.
     else if (/overlay:(.*):prefix/.test(key)) {
       this.storage.setItem(key, value);
       const match = key.match(/overlay:(.*):prefix/);
+      if (match) {
+        const overlayId = match[1];
+        await this.updateOverlayData(overlayId);
+      }
+    }
+    else if (/overlay:(.*):text/.test(key)) {
+      this.storage.setItem(key, value);
+      const match = key.match(/overlay:(.*):text/);
       if (match) {
         const overlayId = match[1];
         await this.updateOverlayData(overlayId);
