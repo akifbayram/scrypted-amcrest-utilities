@@ -39,14 +39,8 @@ export default class AmcrestDahuaUtilitiesMixin
   lastFaceDetected: string;
   detectionListener: EventListenerRegister;
   listenersMap: ListenersMap = {};
-  checkInterval: NodeJS.Timeout;
 
   storageSettings = new StorageSettings(this, {
-    updateInterval: {
-      title: "Update interval in seconds",
-      type: "number",
-      defaultValue: 10,
-    },
     getCurrentOverlayConfigurations: {
       title: "Get current overlay configurations",
       type: "button",
@@ -74,10 +68,6 @@ export default class AmcrestDahuaUtilitiesMixin
 
   async release() {
     this.killed = true;
-    if (this.checkInterval) {
-      clearInterval(this.checkInterval);
-      this.checkInterval = undefined;
-    }
     if (this.detectionListener) {
       this.console.log("Removing face detection listener");
       this.detectionListener.removeListener();
@@ -138,6 +128,24 @@ export default class AmcrestDahuaUtilitiesMixin
     } else if (updateOverlayMatch) {
       const overlayId = updateOverlayMatch[1];
       await this.updateOverlayData(overlayId);
+    }
+    // When a device selection changes, immediately push the update.
+    else if (/overlay:(.*):device/.test(key)) {
+      this.storage.setItem(key, value);
+      const match = key.match(/overlay:(.*):device/);
+      if (match) {
+        const overlayId = match[1];
+        await this.updateOverlayData(overlayId);
+      }
+    }
+    // When the value prefix is changed, immediately push the update.
+    else if (/overlay:(.*):prefix/.test(key)) {
+      this.storage.setItem(key, value);
+      const match = key.match(/overlay:(.*):prefix/);
+      if (match) {
+        const overlayId = match[1];
+        await this.updateOverlayData(overlayId);
+      }
     } else {
       this.storage.setItem(
         key,
@@ -257,8 +265,7 @@ export default class AmcrestDahuaUtilitiesMixin
             textToUpdate = `${prefix || ""}${realDevice.temperature} ${realDevice.temperatureUnit}`;
           } else if (realDevice.interfaces.includes(ScryptedInterface.HumiditySensor)) {
             textToUpdate = `${prefix || ""}${realDevice.humidity} %`;
-          }
-          else if (realDevice.interfaces.includes(ScryptedInterface.Lock)) {
+          } else if (realDevice.interfaces.includes(ScryptedInterface.Lock)) {
             textToUpdate = `${prefix || ""}${realDevice.lockState}`;
           }
         }
@@ -278,23 +285,15 @@ export default class AmcrestDahuaUtilitiesMixin
   async init() {
     try {
       await this.getOverlayData();
-      const funct = async () => {
-        try {
-          listenersIntevalFn({
-            console: this.console,
-            currentListeners: this.listenersMap,
-            id: this.id,
-            onUpdateFn: this.updateOverlayDataEvent,
-            overlayIds: this.overlayIds,
-            storage: this.storageSettings,
-          });
-          await this.getOverlayData();
-        } catch (e) {
-          this.console.error("Error in init interval", e);
-        }
-      };
-      this.checkInterval = setInterval(funct, 10 * 1000);
-      await funct();
+      listenersIntevalFn({
+        console: this.console,
+        currentListeners: this.listenersMap,
+        id: this.id,
+        onUpdateFn: this.updateOverlayDataEvent,
+        overlayIds: this.overlayIds,
+        storage: this.storageSettings,
+      });
+      await this.getOverlayData();
       const faceEnabled = this.overlayIds.some((overlayId) => {
         const overlay = getOverlay({ overlayId, storage: this.storageSettings });
         return overlay.type === OverlayType.FaceDetection;
