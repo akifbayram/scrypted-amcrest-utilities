@@ -93,23 +93,25 @@ export const getOverlaySettings = (props: {
         value: storage.getItem(textKey),
       });
     }
-    if (type === OverlayType.Device) {
-      const prefixSetting: Setting = {
+    if (type === OverlayType.Device || type === OverlayType.FaceDetection) {
+      if (type === OverlayType.Device) {
+        settings.push({
+          key: deviceKey,
+          title: "Device",
+          type: "device",
+          subgroup: overlayName,
+          deviceFilter,
+          immediate: true,
+          value: storage.getItem(deviceKey),
+        });
+      }
+      settings.push({
         key: prefixKey,
         title: "Prefix",
         type: "string",
         subgroup: overlayName,
         value: storage.getItem(prefixKey),
-      };
-      settings.push({
-        key: deviceKey,
-        title: "Device",
-        type: "device",
-        subgroup: overlayName,
-        deviceFilter,
-        immediate: true,
-        value: storage.getItem(deviceKey),
-      }, prefixSetting);
+      });
     }
     settings.push({
       key: updateKey,

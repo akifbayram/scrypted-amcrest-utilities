@@ -5,11 +5,9 @@ import {
 } from "@scrypted/common/src/http-auth-fetch";
 import xml2js from "xml2js";
 import { Readable } from "stream";
+import { VideoWidgetRoot } from "./types";
 
-// Helper function to delay execution.
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export class AmcrestDahuaCameraAPI {
   credential: AuthFetchCredentialState;
@@ -32,7 +30,7 @@ export class AmcrestDahuaCameraAPI {
     urlOrOptions: string | URL | HttpFetchOptions<Readable>,
     body?: Readable
   ) {
-    const response = await authHttpFetch({
+    let response = await authHttpFetch({
       ...typeof urlOrOptions !== "string" && !(urlOrOptions instanceof URL)
         ? urlOrOptions
         : { url: urlOrOptions },
@@ -43,6 +41,22 @@ export class AmcrestDahuaCameraAPI {
           ? urlOrOptions?.body
           : body,
     });
+
+    if (response.statusCode === 401) {
+      this.console.warn("Received 401 - reauthenticating and retrying request");
+      await delay(1000);
+      response = await authHttpFetch({
+        ...typeof urlOrOptions !== "string" && !(urlOrOptions instanceof URL)
+          ? urlOrOptions
+          : { url: urlOrOptions },
+        rejectUnauthorized: false,
+        credential: this.credential,
+        body:
+          typeof urlOrOptions !== "string" && !(urlOrOptions instanceof URL)
+            ? urlOrOptions?.body
+            : body,
+      });
+    }
     return response;
   }
 
@@ -75,36 +89,35 @@ export class AmcrestDahuaCameraAPI {
   }
 
   async updateOverlayText(overlayId: string, text: string) {
-    // First, enable the custom title if it isn’t already turned on.
-    const enableUrl = `http://${this.ip}/cgi-bin/configManager.cgi?action=setConfig&VideoWidget[0].CustomTitle[${overlayId}].EncodeBlend=true&VideoWidget[0].CustomTitle[${overlayId}].PreviewBlend=true`;
-    this.console.log(`Enabling overlay ${overlayId}`);
-    await this.request({
-      method: "GET",
-      url: enableUrl,
-      responseType: "text",
-    });
-    // Wait for a short delay before sending the text update.
-    await delay(300);
-    const textUrl = `http://${this.ip}/cgi-bin/configManager.cgi?action=setConfig&VideoWidget[0].CustomTitle[${overlayId}].Text=${encodeURIComponent(
-      text
-    )}`;
-    this.console.log(`Updating overlay ${overlayId} with text: ${text}`);
-    await this.request({
-      method: "GET",
-      url: textUrl,
-      responseType: "text",
-    });
+    try {
+      const enableUrl = `http://${this.ip}/cgi-bin/configManager.cgi?action=setConfig&VideoWidget[0].CustomTitle[${overlayId}].EncodeBlend=true&VideoWidget[0].CustomTitle[${overlayId}].PreviewBlend=true`;
+      await this.request({
+        method: "GET",
+        url: enableUrl,
+        responseType: "text",
+      });
+      const textUrl = `http://${this.ip}/cgi-bin/configManager.cgi?action=setConfig&VideoWidget[0].CustomTitle[${overlayId}].Text=${encodeURIComponent(
+        text
+      )}`;
+      await this.request({
+        method: "GET",
+        url: textUrl,
+        responseType: "text",
+      });
+      this.console.log(`Overlay ${overlayId} updated successfully with text: ${text}`);
+    } catch (e) {
+      this.console.error(`Error in updateOverlayText for overlay ${overlayId}`, e);
+      throw e;
+    }
   }
 
   async disableOverlayText(overlayId: string) {
     const disableUrl = `http://${this.ip}/cgi-bin/configManager.cgi?action=setConfig&VideoWidget[0].CustomTitle[${overlayId}].EncodeBlend=false`;
-    this.console.log(`Disabling overlay ${overlayId}`);
     await this.request({
       method: "GET",
       url: disableUrl,
       responseType: "text",
     });
-    // Optionally wait a little if you need further delay
-    await delay(300);
+    this.console.log(`Overlay ${overlayId} disabled.`);
   }
 }
