@@ -17,6 +17,7 @@ export const pluginEnabledFilter = `interfaces.includes('${AMCREST_DAHUA_UTILITI
 export type SupportedDevice = ScryptedDeviceBase & (Thermometer | HumiditySensor);
 
 export enum OverlayType {
+  None = "None",
   Text = "Text",
   Device = "Device",
   FaceDetection = "FaceDetection",
@@ -72,25 +73,17 @@ export const getOverlaySettings = (props: {
   const settings: Setting[] = [];
   for (const overlayId of overlayIds) {
     const overlayName = `Overlay ${overlayId}`;
-    const { deviceKey, typeKey, prefixKey, textKey } = getOverlayKeys(overlayId);
-    const type = storage.getItem(typeKey) ?? OverlayType.Text;
-
-    settings.push(
-      {
-        key: typeKey,
-        title: "Type",
-        type: "string",
-        choices: [
-          OverlayType.Text,
-          OverlayType.Device,
-          OverlayType.FaceDetection,
-        ],
-        subgroup: overlayName,
-        value: type,
-        immediate: true,
-      }
-    );
-
+    const { deviceKey, typeKey, prefixKey, textKey, updateKey } = getOverlayKeys(overlayId);
+    const type = storage.getItem(typeKey) ?? OverlayType.None;
+    settings.push({
+      key: typeKey,
+      title: "Type",
+      type: "string",
+      choices: [OverlayType.None, OverlayType.Text, OverlayType.Device, OverlayType.FaceDetection],
+      subgroup: overlayName,
+      value: type,
+      immediate: true,
+    });
     if (type === OverlayType.Text) {
       settings.push({
         key: textKey,
@@ -100,35 +93,33 @@ export const getOverlaySettings = (props: {
         value: storage.getItem(textKey),
       });
     }
-
-    const prefixSetting: Setting = {
-      key: prefixKey,
-      title: 'Prefix',
-      type: 'string',
-      subgroup: overlayName,
-      value: storage.getItem(prefixKey),
-    };
-
     if (type === OverlayType.Device) {
-      settings.push(
-        {
-          key: deviceKey,
-          title: 'Device',
-          type: 'device',
-          subgroup: overlayName,
-          deviceFilter,
-          immediate: true,
-          value: storage.getItem(deviceKey)
-        },
-        prefixSetting
-      );
-    } else if (type === OverlayType.FaceDetection) {
-      settings.push(prefixSetting);
+      const prefixSetting: Setting = {
+        key: prefixKey,
+        title: "Prefix",
+        type: "string",
+        subgroup: overlayName,
+        value: storage.getItem(prefixKey),
+      };
+      settings.push({
+        key: deviceKey,
+        title: "Device",
+        type: "device",
+        subgroup: overlayName,
+        deviceFilter,
+        immediate: true,
+        value: storage.getItem(deviceKey),
+      }, prefixSetting);
     }
+    settings.push({
+      key: updateKey,
+      type: "button",
+      title: "Update configuration",
+      subgroup: overlayName,
+    });
   }
-
   return settings;
-}
+};
 
 export const getOverlay = (props: {
   storage: StorageSettings<any>;
@@ -136,10 +127,10 @@ export const getOverlay = (props: {
 }): Overlay => {
   const { storage, overlayId } = props;
   const { deviceKey, typeKey, prefixKey, textKey } = getOverlayKeys(overlayId);
-  const type = storage.getItem(typeKey) ?? OverlayType.Text;
-  const device = storage.getItem(deviceKey);
-  const text = storage.getItem(textKey);
-  const prefix = storage.getItem(prefixKey);
+  const type = storage.getItem(typeKey) ?? OverlayType.None;
+  const device = storage.getItem(deviceKey) ?? "";
+  const text = storage.getItem(textKey) ?? "";
+  const prefix = storage.getItem(prefixKey) ?? "";
   return {
     device,
     type,
@@ -160,10 +151,28 @@ export const listenersIntevalFn = (props: {
   for (const overlayId of overlayIds) {
     const overlay = getOverlay({ overlayId, storage });
     const overlayType = overlay.type;
+    if (overlayType === OverlayType.None || overlayType === OverlayType.Text) {
+      const currentListener = currentListeners[overlayId];
+      if (currentListener?.listener) {
+        console.log(`Removing listener for overlay ${overlayId} with type ${overlayType}`);
+        currentListener.listener.removeListener();
+        delete currentListeners[overlayId];
+      }
+      continue;
+    }
     let listenerType: ListenerType;
     let listenInterface: ScryptedInterface;
     let deviceId: string;
     if (overlayType === OverlayType.Device) {
+      if (!overlay.device || overlay.device.trim() === "") {
+        const currentListener = currentListeners[overlayId];
+        if (currentListener?.listener) {
+          console.log(`Removing listener for overlay ${overlayId} (no device configured)`);
+          currentListener.listener.removeListener();
+          delete currentListeners[overlayId];
+        }
+        continue;
+      }
       const realDevice = sdk.systemManager.getDeviceById(overlay.device);
       if (realDevice) {
         if (realDevice.interfaces.includes(ScryptedInterface.Thermometer)) {
@@ -186,7 +195,7 @@ export const listenersIntevalFn = (props: {
           deviceId = overlay.device;
         }
       } else {
-        console.log(`Device ${overlay.device} not found`);
+        console.log(`Device ${overlay.device} not found for overlay ${overlayId}`);
       }
     } else if (overlayType === OverlayType.FaceDetection) {
       listenerType = ListenerType.Face;
@@ -199,7 +208,13 @@ export const listenersIntevalFn = (props: {
     const differentDevice = overlay.type === OverlayType.Device ? currentDevice !== overlay.device : false;
     if (listenerType && listenInterface && deviceId && (differentType || differentDevice)) {
       const realDevice = sdk.systemManager.getDeviceById<ScryptedDeviceBase>(deviceId);
-      console.log(`Overlay ${overlayId}: starting device ${realDevice.name} listener for type ${listenerType} on interface ${listenInterface}`);
+      if (!realDevice) {
+        console.warn(`Listener not created for overlay ${overlayId} because device ${deviceId} is not found.`);
+        continue;
+      }
+      console.log(
+        `Overlay ${overlayId}: starting device ${realDevice.name} listener for type ${listenerType} on interface ${listenInterface}`
+      );
       if (currentListener?.listener) {
         currentListener.listener.removeListener();
       }
@@ -217,13 +232,6 @@ export const listenersIntevalFn = (props: {
         device: overlay.device,
         listener: newListener,
       };
-    }
-    if (overlayType === OverlayType.Text) {
-      if (currentListener?.listener) {
-        console.log(`Removing listener for text overlay ${overlayId}`);
-        currentListener.listener.removeListener();
-        delete currentListeners[overlayId];
-      }
     }
   }
 };
@@ -245,8 +253,6 @@ export const parseOverlayData = (props: {
     textToUpdate = `${prefix || ""}${parseNumber ? parseNumber(data) : data} ${realDevice?.temperatureUnit || ""}`;
   } else if (listenerType === ListenerType.Humidity) {
     textToUpdate = `${prefix || ""}${parseNumber ? parseNumber(data) : data} %`;
-    // } else if (listenerType === ListenerType.Cover) {
-    //   textToUpdate = `${prefix || ""}${data}`;
   } else if (listenerType === ListenerType.Lock) {
     textToUpdate = `${prefix || ""}${data}`;
   }
