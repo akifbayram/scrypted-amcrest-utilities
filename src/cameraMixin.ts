@@ -1,11 +1,9 @@
 import sdk, {
   EventListenerRegister,
   ObjectsDetected,
-  ScryptedDeviceBase,
   ScryptedInterface,
   Setting,
   Settings,
-  LockState,
 } from "@scrypted/sdk";
 import {
   SettingsMixinDeviceBase,
@@ -23,7 +21,6 @@ import {
   SupportedDevice,
   pluginEnabledFilter,
   OverlayType,
-  ListenerType,
   ListenersMap,
   OnUpdateOverlayFn,
   listenersIntevalFn,
@@ -190,9 +187,6 @@ export default class AmcrestDahuaUtilitiesMixin
             overlayIds.push(overlayId);
             const { textKey, deviceKey } = getOverlayKeys(overlayId);
             this.storageSettings.putSetting(textKey, config[key]);
-            if (!this.storage.getItem(deviceKey)) {
-              this.console.warn(`No device configured for overlay ${overlayId}. Please set the device in settings.`);
-            }
           }
         }
       } else if (result.json) {
@@ -205,10 +199,7 @@ export default class AmcrestDahuaUtilitiesMixin
             if (id) {
               overlayIds.push(id);
               const { textKey, deviceKey } = getOverlayKeys(id);
-              this.storageSettings.putSetting(textKey, overlayEntry.displayText?.[0]);
-              if (!this.storage.getItem(deviceKey)) {
-                this.console.warn(`No device configured for overlay ${id}. Please set the device in settings.`);
-              }
+              this.storageSettings.putSetting(textKey, overlayEntry.displayText?.[0]);2
             }
           }
         }
@@ -220,12 +211,11 @@ export default class AmcrestDahuaUtilitiesMixin
       this.console.error("Error in getOverlayData", e);
     }
   }
-  
+
   async duplicateFromDevice(deviceId: string) {
     const deviceToDuplicate = this.plugin.mixinsMap[deviceId];
     if (deviceToDuplicate) {
       try {
-        // Remove text key from duplication
         for (const overlayId of deviceToDuplicate.overlayIds) {
           const { device, type, prefix } = getOverlay({
             overlayId,
@@ -251,6 +241,38 @@ export default class AmcrestDahuaUtilitiesMixin
     }
   }
 
+  private async reconnectCamera() {
+    this.console.log("Reconnecting to camera...");
+    this.client = null;
+    const maxRetries = 30;
+    let retries = 0;
+    while (retries < maxRetries) {
+      try {
+        const client = await this.getClient();
+        await client.getOverlay();
+        this.console.log("Camera reconnected successfully.");
+        break;
+      } catch (e) {
+        this.console.warn(`Camera still unreachable, retrying in 10 seconds... (${retries + 1}/${maxRetries})`);
+        await delay(10000);
+        retries++;
+      }
+    }
+    if (retries === maxRetries) {
+      this.console.error("Camera did not reconnect after maximum retries. Giving up.");
+      return;
+    }
+    await this.getOverlayData();
+    listenersIntevalFn({
+      console: this.console,
+      currentListeners: this.listenersMap,
+      id: this.id,
+      onUpdateFn: this.updateOverlayDataEvent,
+      overlayIds: this.overlayIds,
+      storage: this.storageSettings,
+    });
+  }
+
   private updateOverlayDataEvent: OnUpdateOverlayFn = async (props) => {
     const { overlayId, listenerType, data, device } = props;
     this.console.log(
@@ -259,15 +281,23 @@ export default class AmcrestDahuaUtilitiesMixin
     try {
       const overlay = getOverlay({ overlayId, storage: this.storageSettings });
       const textToUpdate = parseOverlayData({ listenerType, data, overlay });
+      this.console.log(`Calculated overlay text for overlay ${overlayId}: "${textToUpdate}"`);
       if (textToUpdate.trim() === "") {
         this.console.log(`Disabling overlay ${overlayId} because text is empty.`);
-        await this.scheduleRequest(() => (this.getClient()).then(client => client.disableOverlayText(overlayId)));
+        await this.scheduleRequest(() =>
+          this.getClient().then(client => client.disableOverlayText(overlayId))
+        );
       } else {
         this.console.log(`Updating overlay ${overlayId} with text: "${textToUpdate}"`);
-        await this.scheduleRequest(() => (this.getClient()).then(client => client.updateOverlayText(overlayId, textToUpdate)));
+        await this.scheduleRequest(() =>
+          this.getClient().then(client => client.updateOverlayText(overlayId, textToUpdate))
+        );
       }
     } catch (e) {
       this.console.error("Error in updateOverlayDataEvent", e);
+      if (e.message && (e.message.includes("EHOSTUNREACH") || e.message.includes("ECONNREFUSED"))) {
+        await this.reconnectCamera();
+      }
     }
   };
 
@@ -310,12 +340,20 @@ export default class AmcrestDahuaUtilitiesMixin
       }
     } catch (e) {
       this.console.error(`Error updating overlay ${overlayId}:`, e);
+      if (e.message && (e.message.includes("EHOSTUNREACH") || e.message.includes("ECONNREFUSED"))) {
+        await this.reconnectCamera();
+      }
     }
-  } 
+  }
 
   async init() {
     try {
       await this.getOverlayData();
+
+      for (const overlayId of this.overlayIds) {
+        await this.updateOverlayData(overlayId);
+      }
+
       listenersIntevalFn({
         console: this.console,
         currentListeners: this.listenersMap,
@@ -324,6 +362,7 @@ export default class AmcrestDahuaUtilitiesMixin
         overlayIds: this.overlayIds,
         storage: this.storageSettings,
       });
+
       await this.getOverlayData();
       const faceEnabled = this.overlayIds.some((overlayId) => {
         const overlay = getOverlay({ overlayId, storage: this.storageSettings });
